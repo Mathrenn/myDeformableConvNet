@@ -46,7 +46,7 @@ def G(q, p):
 """
 def X(x, p):
     Xsum = 0
-    for q, v in enumerate(x):
+    for q, val in enumerate(x):
         Xsum = Xsum + G(q, p) * x[q]
     return Xsum
 
@@ -58,8 +58,11 @@ def X(x, p):
 """
 def linearInterpolation(x, offset):
     y = np.zeros(x.shape())
+    # conv1D output is (batch_size, new_steps, filters)
     offset = offset[2]
-    for p0, v0 in enumerate(y):
+    # TODO: find a good weight function
+    w = np.ones(offset.shape())
+    for p0, val0 in enumerate(y):
         for pn, vn in enumerate(y):
-            v0 = v0 + w[pn] * X(x, p0 + pn + offset[pn])
+            v0 = val0 + w[pn] * X(x, p0 + pn + offset[pn])
     return y
