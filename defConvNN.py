@@ -30,19 +30,20 @@ class DeformableConv1D(Conv1D):
 
 """
     interpolation kernel
-    parameters:
-        q is a location in the input feature map
-        p is a fractional location (p = p0 + pn + dpn)
+
+    q: location in the input feature map
+    p: fractional location (p = p0 + pn + dpn)
 """
 def G(q, p):
     return max(0, 1 - abs(q - p))
 
 """
     interpolation operation
-    parameters:
-        x is the input feature map
-        p is a fractional location (p = p0 + pn + dpn)
-    G is non-zero only for a few qs, so it is fast to compute
+
+    x: input feature map
+    p: fractional location (p = p0 + pn + dpn)
+
+    G is non-zero only for a few qs
 """
 def X(x, p):
     Xsum = 0
@@ -52,9 +53,9 @@ def X(x, p):
 
 """
     linear interpolation
-    parameters:
-        x is the input feature vector
-        offset is the offset vector
+
+    x: input feature vector
+    offset: offset vector
 """
 def linearInterpolation(x, offset):
     y = np.zeros(x.shape())
@@ -64,5 +65,6 @@ def linearInterpolation(x, offset):
     w = np.ones(offset.shape())
     for p0, val0 in enumerate(y):
         for pn, vn in enumerate(y):
-            v0 = val0 + w[pn] * X(x, p0 + pn + offset[pn])
+            p = p0 + pn + offset[pn]
+            v0 = val0 + w[pn] * X(x, p)
     return y
