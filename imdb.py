@@ -30,8 +30,8 @@ x = Conv1D(32, 7, activation='relu')(x)
 # input shape error
 x = DeformableConv1D(32, activation='relu')(x)
 x = MaxPooling1D(5)(x)
-x = Conv1D(32, 7, activation='relu')(x)
-x = DeformableConv1D(32, activation='relu')(x)
+#x = Conv1D(32, 7, activation='relu')(x)
+#x = DeformableConv1D(32, activation='relu')(x)
 x = GlobalMaxPooling1D()(x)
 x = Dense(1)(x)
 
