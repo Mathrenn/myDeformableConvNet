@@ -11,7 +11,6 @@ class DeformableConv1D(Conv1D):
     def __init__(self, filters, kernel_size, **kwargs):
         super(DeformableConv1D, self).__init__(filters=filters, 
                                                kernel_size=kernel_size,
-                                               kernel_initializer='zeros',
                                                **kwargs)
 
     # use super (default) weights
@@ -21,14 +20,16 @@ class DeformableConv1D(Conv1D):
     def call(self, x):
         # offset values are computed with a standard convolutional layer
         offset = super(DeformableConv1D, self).call(x)
-        #assert(offset.shape[2] == x.shape[2])
         # regular grid
-        R = tf.constant(regularGrid(self.kernel_size[0]))
-        dpn = tf.math.reduce_mean(offset, [0,-1])
+        R = regularGrid(self.kernel_size[0])
+        # TODO: find appropriate reduce function
+        dpn = tf.reshape(offset, (-1, self.kernel_size[0]))
+        dpn = tf.math.reduce_mean(dpn, [0])
+        assert(dpn.shape == R.shape)
         # output feature map
         y = linearInterpolation(x, R, dpn)
         y = tf.reshape(y, tf.shape(x))
-        return y 
+        return super(DeformableConv1D, self).call(y)
 
     def compute_output_shape(self, input_shape):
         return input_shape
@@ -57,7 +58,8 @@ def regularGrid(kernel_size):
 """
 def linearInterpolation(x, R, offset):
     # output map
-    y = tf.numpy_function(linInterOp, [x, R, offset], tf.float32)
+    #y = tf.numpy_function(linInterOp, [x, R, offset], tf.float32)
+    y = linInterOp(x, R, offset)
     return y
     
 """
@@ -76,22 +78,38 @@ def linearInterpolation(x, R, offset):
         y: offset feature map
 """
 def linInterOp(x, R, dpn):
-    y = np.zeros_like(x)
+    # TODO: make this work on tensors with shape None
+    y = tf.zeros_like(x)
+    y = tf.Variable(y)
     for p0 in range(y.shape[0]):
         for pn in R:
-            # offset location
-            p = p0 + pn + dpn[pn]
-            glist = np.zeros_like(x)
-            for q in range(x.shape[0]):
-                glist[q] = G(q,p)
-            y[p0] = np.sum(x * glist)
+            # offset locations
+            P = dpn + pn + p0
+            Q = tf.cast(tf.range(tf.reshape(x, [-1]).shape[0]), tf.float32)
+            G = tf.Variable(off_update(Q, P, x))
+            # update y(p0) with the last value
+            tf.compat.v1.scatter_add(y, [p0], G)
     return y
+
+"""
+    for each tensor p in P:
+        for each tensor q in Q:
+            update q with g(q,p)
+"""
+def off_update(Q, P, x):
+    Qlist = tf.zeros_like(Q)
+    Qlist = tf.Variable(Qlist)
+    for p in tf.unstack(tf.reshape(P, [-1])):
+        for q in tf.unstack(tf.reshape(Q, [-1])):
+            tf.scatter_update(Qlist, tf.where(tf.equal(Qlist, q)), g(q, p))
+    # NOTE: reduce_mean returns values most similar to a standard conv
+    return tf.reduce_mean(tf.stack(Qlist) * tf.reshape(x, [-1]), [0])
 
 """
     linear interpolation kernel
     
-    q: integer, input location
-    p: integer, offset location
+    q: input location
+    p: offset location
 """
-def G(q, p):
-    return max(0, 1-(abs(q-p)))
+def g(q, p):
+    return tf.maximum(0, tf.subtract( 1, (tf.abs(q-p))))
