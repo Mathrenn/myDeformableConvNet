@@ -1,6 +1,6 @@
 import numpy as np
-from keras.datasets import imdb
-from keras.preprocessing import sequence
+from tensorflow.keras.datasets import imdb
+from tensorflow.keras.preprocessing import sequence
 import pdb
 
 max_features = 10000
@@ -18,20 +18,17 @@ x_test = sequence.pad_sequences(x_test, maxlen=maxlen)
 print('x_train shape:', x_train.shape)
 print('x_test shape:', x_test.shape)
 
-from keras.layers import Dense, Input, Embedding 
-from keras.layers import Conv1D, GlobalMaxPooling1D, MaxPooling1D, GlobalAveragePooling1D
-from keras import models
-from keras.optimizers import RMSprop
+from tensorflow.keras.layers import Dense, Input, Embedding 
+from tensorflow.keras.layers import Conv1D, GlobalMaxPooling1D, MaxPooling1D, GlobalAveragePooling1D
+from tensorflow.keras import models
+from tensorflow.keras.optimizers import RMSprop
 from defConvNN import DeformableConv1D
 
 I = Input(shape=(maxlen,))
 x = Embedding(max_features, 128)(I)
-x = Conv1D(32, 7, activation='relu')(x)
-# input shape error
-x = DeformableConv1D(32, 7, activation='relu')(x)
+x = DeformableConv1D(32, 5, activation='relu')(x)
 x = MaxPooling1D(5)(x)
-#x = Conv1D(32, 7, activation='relu')(x)
-#x = DeformableConv1D(32, activation='relu')(x)
+x = DeformableConv1D(32, 5, activation='relu')(x)
 x = GlobalMaxPooling1D()(x)
 x = Dense(1)(x)
 

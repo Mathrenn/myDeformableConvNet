@@ -1,16 +1,17 @@
 # Following https://keras.io/layers/writing-your-own-keras-layers/
 # https://www.tensorflow.org/beta/guide/keras/custom_layers_and_models
 
-from keras.layers import Layer, Conv1D
 import tensorflow as tf
 import numpy as np
 import pdb
+from tensorflow.keras.layers import Layer, Conv1D
 
 # Deformable 1D Convolution
 class DeformableConv1D(Conv1D):
     def __init__(self, filters, kernel_size, **kwargs):
         super(DeformableConv1D, self).__init__(filters=filters, 
                                                kernel_size=kernel_size,
+                                               padding='CAUSAL',
                                                **kwargs)
 
     # use super (default) weights
@@ -21,15 +22,15 @@ class DeformableConv1D(Conv1D):
         # offset values are computed with a standard convolutional layer
         offset = super(DeformableConv1D, self).call(x)
         # regular grid
-        R = regularGrid(self.kernel_size[0])
-        # TODO: find appropriate reduce function
+        R = tf.constant(regularGrid(self.kernel_size[0]), tf.float32)
         dpn = tf.reshape(offset, (-1, self.kernel_size[0]))
         dpn = tf.math.reduce_mean(dpn, [0])
         assert(dpn.shape == R.shape)
         # output feature map
         y = linearInterpolation(x, R, dpn)
         y = tf.reshape(y, tf.shape(x))
-        return super(DeformableConv1D, self).call(y)
+        y = super(DeformableConv1D, self).call(y)
+        return y
 
     def compute_output_shape(self, input_shape):
         return input_shape
@@ -58,7 +59,6 @@ def regularGrid(kernel_size):
 """
 def linearInterpolation(x, R, offset):
     # output map
-    #y = tf.numpy_function(linInterOp, [x, R, offset], tf.float32)
     y = linInterOp(x, R, offset)
     return y
     
@@ -79,16 +79,20 @@ def linearInterpolation(x, R, offset):
 """
 def linInterOp(x, R, dpn):
     # TODO: make this work on tensors with shape None
-    y = tf.zeros_like(x)
-    y = tf.Variable(y)
-    for p0 in range(y.shape[0]):
-        for pn in R:
-            # offset locations
-            P = dpn + pn + p0
-            Q = tf.cast(tf.range(tf.reshape(x, [-1]).shape[0]), tf.float32)
-            G = tf.Variable(off_update(Q, P, x))
-            # update y(p0) with the last value
-            tf.compat.v1.scatter_add(y, [p0], G)
+    R = tf.cast(R, tf.float32)
+    off = dpn + R
+    x_reshaped = tf.reshape(x, [-1])
+    xshape = tf.shape(x_reshaped).get_shape()
+    Q = tf.range(xshape.as_list()[0], dtype=tf.float32)
+    Q = tf.expand_dims(Q, [-1])
+    P = Q + off
+    P = tf.transpose(P)
+    # every column will contain the corresponding g(q,p) sum
+    Poff = tf.map_fn(lambda p: off_update(Q, p, x_reshaped), 
+                P, 
+                dtype=tf.float32)
+    # and the sum of every column represent each output element
+    y = tf.reduce_sum(Poff, [0])
     return y
 
 """
@@ -96,14 +100,11 @@ def linInterOp(x, R, dpn):
         for each tensor q in Q:
             update q with g(q,p)
 """
-def off_update(Q, P, x):
-    Qlist = tf.zeros_like(Q)
-    Qlist = tf.Variable(Qlist)
-    for p in tf.unstack(tf.reshape(P, [-1])):
-        for q in tf.unstack(tf.reshape(Q, [-1])):
-            tf.scatter_update(Qlist, tf.where(tf.equal(Qlist, q)), g(q, p))
-    # NOTE: reduce_mean returns values most similar to a standard conv
-    return tf.reduce_mean(tf.stack(Qlist) * tf.reshape(x, [-1]), [0])
+def off_update(Q, p, x):
+    G = tf.identity(Q)
+    G = tf.map_fn(lambda q: g(q, p), G, tf.float32)
+    G = G * x
+    return tf.reduce_sum(G, [0])
 
 """
     linear interpolation kernel
@@ -112,4 +113,7 @@ def off_update(Q, P, x):
     p: offset location
 """
 def g(q, p):
-    return tf.maximum(0, tf.subtract( 1, (tf.abs(q-p))))
+    g = q-p
+    g = tf.abs(g)
+    g = tf.subtract(1.0, g)
+    return tf.maximum(0.0, g)
