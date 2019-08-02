@@ -5,6 +5,7 @@ import pdb
 
 max_features = 10000
 maxlen = 500
+batch_size = 128
 
 print("Downloading dataset...")
 
@@ -24,11 +25,13 @@ from tensorflow.keras import models
 from tensorflow.keras.optimizers import RMSprop
 from defConvNN import DeformableConv1D
 
-I = Input(shape=(maxlen,))
+I = Input(shape=(maxlen))
 x = Embedding(max_features, 128)(I)
-x = DeformableConv1D(32, 5, activation='relu')(x)
+offset = Conv1D(32, 7, activation='relu')(x)
+x = DeformableConv1D(32, 7, offset, batch_size, activation='relu')(x)
 x = MaxPooling1D(5)(x)
-x = DeformableConv1D(32, 5, activation='relu')(x)
+offset = Conv1D(32, 7, activation='relu')(x)
+x = DeformableConv1D(32, 7, offset, batch_size, activation='relu')(x)
 x = GlobalMaxPooling1D()(x)
 x = Dense(1)(x)
 
@@ -42,7 +45,7 @@ model.compile(optimizer=RMSprop(lr=1e-4),
 
 history = model.fit(x_train, y_train,
                     epochs=10,
-                    batch_size=128,
+                    batch_size=batch_size,
                     validation_split=0.2)
 
 import matplotlib.pyplot as plt
