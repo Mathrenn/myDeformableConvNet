@@ -73,7 +73,7 @@ def linearInterpolation(x, R, offset):
     # output map
     y = linInterOp(x, R, offset)
     return y
-    
+
 """
     linear interpolation operation
 
@@ -96,28 +96,18 @@ def linInterOp(x, R, dpn):
     off = tf.math.reduce_mean(off, [0])
     x1d = tf.reshape(x, [-1])
     xshape = x1d.shape
+
     Q = tf.range(xshape[0])
     Q = tf.cast(Q, tf.float32)
     Q = tf.expand_dims(Q, [-1])
     P = Q + off
-    P = tf.transpose(P)
-    op = lambda p: off_update(Q, p, x1d)
-    # every column will contain the corresponding g(q,p) sum
-    Poff = tf.map_fn(op, P, dtype=tf.float32)
-    # and the sum of every column represent each output element
-    y = tf.reduce_sum(Poff, [0])
-    return y
 
-"""
-    for each tensor p in P:
-        for each tensor q in Q:
-            update q with g(q,p)
-"""
-def off_update(Q, p, x):
-    G = tf.map_fn(lambda q: g(q, p), Q, tf.float32)
-    G = G * x
-    G = tf.reduce_sum(G, [0])
-    return G
+    y = g(Q * tf.ones([1, R.shape[0]]), P)
+    x2 = tf.expand_dims(x1d, [-1]) * tf.ones([1, R.shape[0]])
+    y = y * x2
+    y = tf.transpose(y)
+    y = tf.reduce_sum(y, [0])
+    return y
 
 """
     linear interpolation kernel
