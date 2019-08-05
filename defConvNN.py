@@ -3,49 +3,64 @@
 
 import tensorflow as tf
 from tensorflow.keras.layers import Layer, Conv1D
+from tensorflow.python.keras.utils import conv_utils
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import nn_ops
 import numpy as np
 import pdb
 
 # Deformable 1D Convolution
 class DeformableConv1D(Conv1D):
-    def __init__(self, filters, kernel_size, offset, batch_size, **kwargs):
+    def __init__(self, filters, kernel_size, offset, **kwargs):
         super(DeformableConv1D, self).__init__(
                     filters=filters, 
                     kernel_size=kernel_size,
                     **kwargs)
-        self.batch_size = batch_size
+
+        self.offshape = offset.shape
+        self.offset = tf.reshape(offset, [-1, 1])
 
         self.R = tf.constant(
                     regularGrid(kernel_size), 
                     tf.float32)
 
-        self.offset = offset
-        self.offset.set_shape([self.batch_size,
-                          offset.shape[1],
-                          offset.shape[2]])
-        self.offset = tf.reshape(self.offset, [-1, 1])
-
-        #self.dpn = tf.reshape(
-        #            offset, 
-        #            shape=(-1, kernel_size))
-
-        #self.dpn = tf.math.reduce_mean(self.dpn, [0])
-
-        #assert(self.dpn.shape == self.R.shape)
 
     def build(self, input_shape):
-        super(DeformableConv1D, self).build(input_shape)
+        input_shape = tensor_shape.TensorShape(input_shape)
+        if self.data_format == 'channels_first':
+            channel_axis = 1
+        else:
+            channel_axis = -1
+        if input_shape.dims[channel_axis].value is None:
+            raise ValueError('The channel dimension of the inputs should be defined. Found `None`.')
+        input_dim = int(input_shape[channel_axis])
+        kernel_shape = self.kernel_size + (input_dim, self.filters)
+
+        self.kernel = self.add_weight(
+            name='kernel',
+            shape=kernel_shape,
+            initializer=self.kernel_initializer,
+            regularizer=self.kernel_regularizer,
+            constraint=self.kernel_constraint,
+            trainable=False,
+            dtype=self.dtype)
+        if self.padding == 'causal':
+            op_padding = 'valid'
+        else:
+            op_padding = self.padding
+        if not isinstance(op_padding, (list, tuple)):
+            op_padding = op_padding.upper()
+
+        self.built = True
 
     def call(self, x):
         # output feature map
-        x1 = tf.identity(x)
-        x1.set_shape([self.batch_size,
-                          x.shape[1],
-                          x.shape[2]])
-        y = linearInterpolation(x1, self.R, self.offset)
-        y = tf.reshape(y, tf.shape(x))
-        y = super(DeformableConv1D, self).call(y)
+        y = linearInterpolation(x, self.R, self.offset)
+        y = tf.reshape(y, self.offshape)
         return y
+
+    def compute_output_shape(self, input_shape):
+        return super(DeformableConv1D, self).compute_output_shape(input_shape)
 
 """
     Regular grid
@@ -99,15 +114,19 @@ def linInterOp(x, R, dpn):
 
     Q = tf.range(xshape[0])
     Q = tf.cast(Q, tf.float32)
-    Q = tf.expand_dims(Q, [-1])
-    P = Q + off
 
-    y = g(Q * tf.ones([1, R.shape[0]]), P)
-    x2 = tf.expand_dims(x1d, [-1]) * tf.ones([1, R.shape[0]])
-    y = y * x2
-    y = tf.transpose(y)
-    y = tf.reduce_sum(y, [0])
+    P = tf.range(tf.shape(tf.reshape(dpn, [-1]))[0])
+    P = tf.cast(P, tf.float32)
+
+    y = tf.map_fn(lambda p: G(Q, p, x1d), P)
     return y
+
+def G(Q, p, x):
+    P = tf.fill(Q.shape, p)
+    P = g(Q, P)
+    P = P * x 
+    P = tf.reduce_sum(P)
+    return P
 
 """
     linear interpolation kernel

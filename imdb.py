@@ -19,19 +19,18 @@ x_test = sequence.pad_sequences(x_test, maxlen=maxlen)
 print('x_train shape:', x_train.shape)
 print('x_test shape:', x_test.shape)
 
-from tensorflow.keras.layers import Dense, Input, Embedding 
-from tensorflow.keras.layers import Conv1D, GlobalMaxPooling1D, MaxPooling1D, GlobalAveragePooling1D
+from tensorflow.keras.layers import Dense, Input, Embedding, Conv1D, GlobalMaxPooling1D, MaxPooling1D
 from tensorflow.keras import models
 from tensorflow.keras.optimizers import RMSprop
 from defConvNN import DeformableConv1D
 
-I = Input(shape=(maxlen))
+I = Input(batch_shape=(batch_size, maxlen))
 x = Embedding(max_features, 128)(I)
-offset = Conv1D(32, 7, activation='relu')(x)
-x = DeformableConv1D(32, 7, offset, batch_size, activation='relu')(x)
+offset = Conv1D(32, 7)(x)
+x = DeformableConv1D(32, 7, offset)(x)
 x = MaxPooling1D(5)(x)
-offset = Conv1D(32, 7, activation='relu')(x)
-x = DeformableConv1D(32, 7, offset, batch_size, activation='relu')(x)
+offset = Conv1D(32, 7)(x)
+x = DeformableConv1D(32, 7, offset)(x)
 x = GlobalMaxPooling1D()(x)
 x = Dense(1)(x)
 
@@ -44,7 +43,7 @@ model.compile(optimizer=RMSprop(lr=1e-4),
                 metrics=['acc'])
 
 history = model.fit(x_train, y_train,
-                    epochs=10,
+                    epochs=3,
                     batch_size=batch_size,
                     validation_split=0.2)
 
