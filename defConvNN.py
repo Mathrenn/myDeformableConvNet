@@ -34,16 +34,16 @@ class DeformableConv1D(Conv1D):
         if input_shape.dims[channel_axis].value is None:
             raise ValueError('The channel dimension of the inputs should be defined. Found `None`.')
         input_dim = int(input_shape[channel_axis])
-        kernel_shape = self.kernel_size + (input_dim, self.filters)
-
-        self.kernel = self.add_weight(
-            name='kernel',
-            shape=kernel_shape,
+        W_shape = self.kernel_size + (1,)
+        self.W = self.add_weight(
+            name='W',
+            shape=W_shape,
             initializer=self.kernel_initializer,
             regularizer=self.kernel_regularizer,
             constraint=self.kernel_constraint,
-            trainable=False,
+            trainable=True,
             dtype=self.dtype)
+
         if self.padding == 'causal':
             op_padding = 'valid'
         else:
@@ -51,11 +51,13 @@ class DeformableConv1D(Conv1D):
         if not isinstance(op_padding, (list, tuple)):
             op_padding = op_padding.upper()
 
+
+        self.bias = None
         self.built = True
 
     def call(self, x):
         # output feature map
-        y = linearInterpolation(x, self.R, self.offset)
+        y = linearInterpolation(x, self.R, self.offset, self.W)
         y = tf.reshape(y, self.offshape)
         return y
 
@@ -84,18 +86,13 @@ def regularGrid(kernel_size):
     offset: (b, ts, c)
     R: (kernel_size)
 """
-def linearInterpolation(x, R, offset):
+def linearInterpolation(x, R, offset, W):
     # output map
-    y = linInterOp(x, R, offset)
+    y = linInterOp(x, R, offset, W)
     return y
 
 """
     linear interpolation operation
-
-    for each location p0 in the output map y
-     for each location pn in the regular grid R
-      x(p) = sum(g(q, p), x(q)) over the input locations q
-       with p = p0 + pn + dpn and dpn offset location
     
     input:
         x: input feature map
@@ -104,29 +101,26 @@ def linearInterpolation(x, R, offset):
     output:
         y: offset feature map
 """
-def linInterOp(x, R, dpn):
-    # TODO: make this work on tensors with shape None
+def linInterOp(x, R, dpn, W):
     R = tf.cast(R, tf.float32)
     off = dpn + R
     off = tf.math.reduce_mean(off, [0])
     x1d = tf.reshape(x, [-1])
     xshape = x1d.shape
-
     Q = tf.range(xshape[0])
     Q = tf.cast(Q, tf.float32)
-
     P = tf.range(tf.shape(tf.reshape(dpn, [-1]))[0])
     P = tf.cast(P, tf.float32)
 
-    y = tf.map_fn(lambda p: G(Q, p, x1d), P)
-    return y
+    Q1 = tf.compat.v2.expand_dims(Q, [-1])
+    P1 = tf.compat.v2.expand_dims(P, [0])
 
-def G(Q, p, x):
-    P = tf.fill(Q.shape, p)
-    P = g(Q, P)
-    P = P * x 
-    P = tf.reduce_sum(P)
-    return P
+    y = g(Q1, P1)
+    y = y * tf.compat.v2.expand_dims(x1d, [-1])
+    y = tf.reduce_sum(y, [0])
+    y = y * W
+    y = tf.reduce_sum(y, [0])
+    return y
 
 """
     linear interpolation kernel
