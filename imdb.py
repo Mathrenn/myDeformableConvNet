@@ -8,6 +8,8 @@ from tensorflow.keras.layers import Conv1D, GlobalMaxPooling1D
 from tensorflow.keras.datasets import imdb
 from tensorflow.python.keras.engine.base_layer import InputSpec
 
+from defConvNN import DeformableConv1D
+
 # set parameters:
 max_features = 10000
 maxlen = 400
