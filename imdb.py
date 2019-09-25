@@ -18,7 +18,7 @@ embedding_dims = 50
 filters = 250
 kernel_size = 3
 hidden_dims = 250
-epochs = 2
+epochs = 4
 
 print('Loading data...')
 (x_train, y_train), (x_test, y_test) = imdb.load_data(num_words=max_features)
@@ -36,7 +36,6 @@ print('Build model...')
 # we start off with an efficient embedding layer which maps
 # our vocab indices into embedding_dims dimensions
 I = Input(shape=(maxlen,))
-#I = Input(batch_shape=(batch_size, maxlen))
 x = Embedding(max_features, embedding_dims)(I)
 x = Dropout(0.2)(x)
 
@@ -69,4 +68,3 @@ model.fit(x_train, y_train,
           batch_size=batch_size,
           epochs=epochs,
           validation_data=(x_test, y_test))
-
