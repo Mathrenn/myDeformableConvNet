@@ -19,7 +19,7 @@ class DeformableConv1D(tf.keras.layers.Layer):
         self.filters = filters
         self.kernel_size = kernel_size
         self.R = tf.constant(self.regularGrid(self.kernel_size), tf.float32)
-        self.offconv = Conv1D(filters, kernel_size, trainable=False, **kwargs)
+        self.offconv = Conv1D(filters, kernel_size, trainable=True, **kwargs)
 
     def build(self, input_shape):
         W_shape = (self.kernel_size, 1)
