@@ -8,4 +8,4 @@ In the paper, the deformable convolution operation is about computing the (bi)li
 
 In this version, we augment the input with offsets by applying the convolution operation exclusively to the **input** sequence (and its locations).
 
-On the IMDB sentiment analysis dataset, results are almost the same as a standard Conv1D.
+On the IMDB sentiment analysis dataset, results are ~~almost the same~~ slightly better than a standard Conv1D.
