@@ -5,7 +5,7 @@
 
 import tensorflow as tf
 import tensorflow.keras.backend as K
-from tensorflow.keras.layers import Layer, Conv1D
+from tensorflow.keras.layers import Layer, Conv1D, Dense
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import nn_ops
@@ -20,6 +20,7 @@ class DeformableConv1D(tf.keras.layers.Layer):
         self.kernel_size = kernel_size
         self.R = tf.constant(self.regularGrid(self.kernel_size), tf.float32)
         self.offconv = Conv1D(filters, kernel_size, trainable=True, **kwargs)
+        self.offFC = Dense(self.kernel_size)
 
     def build(self, input_shape):
         W_shape = (self.kernel_size, 1)
@@ -28,18 +29,17 @@ class DeformableConv1D(tf.keras.layers.Layer):
             shape=W_shape,
             trainable=True,
             dtype=self.dtype)
-        self.built = True
+        super(DeformableConv1D, self).build(input_shape)
 
     def call(self, x):
         # output feature map
-        offset = self.offconv(x)
+        offset = self.offFC(self.offconv(x))
+        offset = tf.reduce_mean(offset, [0, 1])
         y = self.linearInterpolation(x, offset)
         y = tf.reduce_sum(self.W * y, [0])
-        
-        #y = tf.reshape(y, [-1, offset.shape[1], offset.shape[2]])
         y = tf.reshape(y, [-1, x.shape[1], x.shape[2]])
         
-        return self.offconv(y)
+        return super(DeformableConv1D, self).call(y)
 
     """
        Regular grid
@@ -62,15 +62,11 @@ class DeformableConv1D(tf.keras.layers.Layer):
     def linearInterpolation(self, x, offset):
         Q = tf.where(tf.equal(K.flatten(x), K.flatten(x)))
         Q = tf.cast(Q, tf.float32)
-        #Q = tf.range(0, x.shape[0]*x.shape[1]*x.shape[2], dtype=tf.float32)
 
-        R = tf.cast(self.R, tf.float32)
-        dpn = tf.reshape(offset, [-1, 1]) + R
-        dpn = tf.math.reduce_mean(dpn, [0])
-
+        dpn = offset + self.R
         dpn_list = tf.unstack(dpn)
-        ylist = []
 
+        ylist = []
         for pn in dpn_list:
           G = self.g(Q, Q+pn)
           ylist.append(G * K.flatten(x))
