@@ -1,8 +1,3 @@
-#!pip install tensorflow-gpu==2.0.0-rc2
-
-# Following https://keras.io/layers/writing-your-own-keras-layers/
-# https://www.tensorflow.org/beta/guide/keras/custom_layers_and_models
-
 import tensorflow as tf
 import tensorflow.keras.backend as K
 from tensorflow.keras.layers import Layer, Conv1D, Dense
@@ -14,12 +9,12 @@ import pdb
 
 # Deformable 1D Convolution
 class DeformableConv1D(tf.keras.layers.Layer):
-    def __init__(self, filters, kernel_size, **kwargs):
+    def __init__(self, filters, kernel_size):
         super(DeformableConv1D, self).__init__()
         self.filters = filters
         self.kernel_size = kernel_size
         self.R = tf.constant(self.regularGrid(self.kernel_size), tf.float32)
-        self.offconv = Conv1D(filters, kernel_size, trainable=True, **kwargs)
+        self.offconv = Conv1D(filters*2, kernel_size, padding='same', activation='relu', trainable=True, **kwargs)
         self.offFC = Dense(self.kernel_size)
 
     def build(self, input_shape):
@@ -32,14 +27,11 @@ class DeformableConv1D(tf.keras.layers.Layer):
         super(DeformableConv1D, self).build(input_shape)
 
     def call(self, x):
-        # output feature map
-        offset = self.offFC(self.offconv(x))
-        offset = tf.reduce_mean(offset, [0, 1])
+        offset = self.offConv(x)
         y = self.linearInterpolation(x, offset)
         y = tf.reduce_sum(self.W * y, [0])
         y = tf.reshape(y, [-1, x.shape[1], x.shape[2]])
-        
-        return super(DeformableConv1D, self).call(y)
+        return y
 
     """
        Regular grid
@@ -60,15 +52,20 @@ class DeformableConv1D(tf.keras.layers.Layer):
         R: (kernel_size)
     """
     def linearInterpolation(self, x, offset):
+        # input locations
         Q = tf.where(tf.equal(K.flatten(x), K.flatten(x)))
         Q = tf.cast(Q, tf.float32)
 
-        dpn = offset + self.R
-        dpn_list = tf.unstack(dpn)
+        offset = offset - x
+        offset = K.flatten(offset)
 
+        # offset locations
+        P = Q + offset
+
+        # regulard grid sampling
         ylist = []
-        for pn in dpn_list:
-          G = self.g(Q, Q+pn)
+        for pn in tf.unstack(self.R):
+          G = self.g(Q, P+pn)
           ylist.append(G * K.flatten(x))
 
         return tf.stack(ylist)
@@ -79,9 +76,7 @@ class DeformableConv1D(tf.keras.layers.Layer):
         p: offset location
     """
     def g(self, q, p):
-        #pdb.set_trace()
         g = tf.subtract(tf.squeeze(q), tf.squeeze(p))
         g = tf.abs(g)
         g = tf.subtract(1.0, g)
         return tf.maximum(0.0, g)
-
