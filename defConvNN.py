@@ -14,8 +14,6 @@ class DeformableConv1D(tf.keras.layers.Layer):
         self.filters = filters
         self.kernel_size = kernel_size
         self.R = tf.constant(self.regularGrid(self.kernel_size), tf.float32)
-        self.offconv = Conv1D(filters*2, kernel_size, padding='same', activation='relu', trainable=True, **kwargs)
-        self.offFC = Dense(self.kernel_size)
 
     def build(self, input_shape):
         W_shape = (self.kernel_size, 1)
@@ -27,7 +25,8 @@ class DeformableConv1D(tf.keras.layers.Layer):
         super(DeformableConv1D, self).build(input_shape)
 
     def call(self, x):
-        offset = self.offConv(x)
+        offconv = Conv1D(x.shape[-1]*2, self.kernel_size, padding='same', activation='relu', trainable=True)
+        offset = offconv(x)
         y = self.linearInterpolation(x, offset)
         y = tf.reduce_sum(self.W * y, [0])
         y = tf.reshape(y, [-1, x.shape[1], x.shape[2]])
